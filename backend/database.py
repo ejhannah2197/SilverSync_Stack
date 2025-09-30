@@ -41,10 +41,6 @@ class UserEventSessions(Base):
     event_id = Column(Integer, nullable=False)
     start_time = Column(DateTime(timezone=False), nullable=False)
     end_time = Column(DateTime(timezone=False), nullable=False)
-    duration_sec = Column(
-        Integer,
-        default=func.extract("epoch", (func.cast(func.now(), DateTime) - func.cast(func.now(), DateTime)))
-    )
 
 
 class Events(Base):
@@ -58,10 +54,6 @@ class Events(Base):
     )
     start_time = Column(DateTime(timezone=False), nullable=False)
     end_time = Column(DateTime(timezone=False), nullable=False)
-    duration_sec = Column(
-        Integer,
-        default=func.extract("epoch", (func.cast(func.now(), DateTime) - func.cast(func.now(), DateTime)))
-    )
     location_geom = Column(Geometry("POINT"))
 
 # -------------------------

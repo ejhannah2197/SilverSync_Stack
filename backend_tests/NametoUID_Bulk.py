@@ -2,7 +2,7 @@
 # No CSV intermediate file
 
 import names
-from backend.database import SessionLocal, NametoUID
+from backend.database_engine import SessionLocal, NametoUID
 
 # -----------------------------
 # Config

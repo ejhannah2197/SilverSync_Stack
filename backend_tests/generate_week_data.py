@@ -19,7 +19,7 @@ from tqdm import tqdm   # optional progress bar; install with pip if desired
 
 # Import your ORM session & model
 # Adjust the import path if your database.py is not at top-level
-from backend.database import SessionLocal, RealtimeLocationData, NametoUID, engine
+from backend.database_engine import SessionLocal, RealtimeLocationData, NametoUID, engine
 
 # ---------------------------
 # CONFIG - tweak these values

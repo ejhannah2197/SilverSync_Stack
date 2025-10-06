@@ -4,7 +4,7 @@ import random
 import time
 from datetime import datetime
 import argparse
-from backend.database import SessionLocal, RealtimeLocationData, NametoUID
+from backend.database_engine import SessionLocal, RealtimeLocationData, NametoUID
 
 # Constants
 MAX_STEP = 1  # maximum movement per update

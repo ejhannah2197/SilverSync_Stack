@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import random
 
 # Import your ORM models from database.py
-from backend.database import RealtimeLocationData, Events, UserEventSessions, engine
+from backend.database_engine import RealtimeLocationData, Events, UserEventSessions, engine
 
 # --- Configurable thresholds ---
 DISTANCE_THRESHOLD_FEET = 6.0

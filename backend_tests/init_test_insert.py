@@ -54,11 +54,11 @@ try:
 
     # Commit everything
     session.commit()
-    print("✅ Sample data inserted successfully!")
+    print("Sample data inserted successfully!")
 
 except Exception as e:
     session.rollback()
-    print(f"❌ Error: {e}")
+    print(f"Error: {e}")
 
 finally:
     session.close()

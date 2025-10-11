@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from database import SessionLocal, NametoUID, RealtimeLocationData, UserEventSessions, Events
+from database_engine import SessionLocal, NametoUID, RealtimeLocationData, UserEventSessions, Events
 
 # Create session
 session = SessionLocal()

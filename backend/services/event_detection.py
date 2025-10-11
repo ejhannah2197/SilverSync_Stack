@@ -1,11 +1,12 @@
 import time
 import pandas as pd
 import networkx as nx
-from sqlalchemy.orm import Session
-from sqlalchemy import text, func, and_
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import text, func, and_, cast, Interval
 from geoalchemy2 import WKTElement
 from datetime import datetime, timedelta
 import random
+from tqdm import tqdm  # <-- NEW: for progress bar
 
 # Import your ORM models from database.py
 from backend.database_engine import RealtimeLocationData, Events, UserEventSessions, engine
@@ -29,28 +30,58 @@ def insert_test_data(num_users=10, num_timestamps=5):
 
 # --- Query proximity pairs using downsampled timestamps ---
 def get_proximity_data_bucketed(session, time_window='7 days', downsample_interval=1):
+    """
+    ORM-based query that downsamples timestamps and finds nearby users.
+    """
     bucket = int(downsample_interval)
     dist = float(DISTANCE_THRESHOLD_FEET)
 
-    query = f"""
-        WITH downsampled AS (
-            SELECT
-                id,
-                recorded_at,
-                geom,
-                floor(extract(epoch FROM recorded_at) / {bucket}) AS bucket_group
-            FROM realtime_location_data
-            WHERE recorded_at >= NOW() - INTERVAL '{time_window}'
+    a = aliased(RealtimeLocationData)
+    b = aliased(RealtimeLocationData)
+
+    bucket_a = func.floor(func.extract('epoch', a.recorded_at) / bucket).label('bucket_group_a')
+    bucket_b = func.floor(func.extract('epoch', b.recorded_at) / bucket).label('bucket_group_b')
+
+    sub_a = (
+        session.query(
+            a.id.label('id'),
+            a.geom.label('geom'),
+            a.recorded_at.label('recorded_at'),
+            bucket_a
         )
-        SELECT a.id AS user_a, b.id AS user_b, a.recorded_at
-        FROM downsampled a
-        JOIN downsampled b
-          ON a.bucket_group = b.bucket_group
-         AND a.id < b.id
-         AND ST_DWithin(a.geom, b.geom, {dist})
-        ORDER BY a.recorded_at
-    """
-    df = pd.read_sql(text(query), session.bind)
+        .filter(a.recorded_at >= func.now() - cast(text(f"INTERVAL '{time_window}'"), Interval))
+        .subquery()
+    )
+
+    sub_b = (
+        session.query(
+            b.id.label('id'),
+            b.geom.label('geom'),
+            b.recorded_at.label('recorded_at'),
+            bucket_b
+        )
+        .filter(b.recorded_at >= func.now() - cast(text(f"INTERVAL '{time_window}'"), Interval))
+        .subquery()
+    )
+
+    query = (
+        session.query(
+            sub_a.c.id.label('user_a'),
+            sub_b.c.id.label('user_b'),
+            sub_a.c.recorded_at.label('recorded_at')
+        )
+        .join(
+            sub_b,
+            and_(
+                sub_a.c.bucket_group_a == sub_b.c.bucket_group_b,
+                sub_a.c.id < sub_b.c.id,
+                func.ST_DWithin(sub_a.c.geom, sub_b.c.geom, dist)
+            )
+        )
+        .order_by(sub_a.c.recorded_at)
+    )
+
+    df = pd.read_sql(query.statement, session.bind)
     return df
 
 # --- Group users into connected events ---
@@ -106,20 +137,28 @@ def consolidate_events(events):
 # --- Compute event centroid using ORM ---
 def get_event_centroid(session, start_time, end_time, ids):
     result = session.query(
-        RealtimeLocationData.geom.ST_Collect().ST_Centroid().ST_AsText()
+        func.ST_AsText(
+            func.ST_Centroid(
+                func.ST_Collect(RealtimeLocationData.geom)
+            )
+        )
     ).filter(
         RealtimeLocationData.id.in_(ids),
         RealtimeLocationData.recorded_at.between(start_time, end_time)
     ).scalar()
     return result
 
-# --- Insert events and sessions using ORM ---
+# --- Insert events and sessions using ORM (with progress bar) ---
 def insert_events(session, consolidated_events):
-    for event in consolidated_events:
-        duration = (event["end_time"] - event["start_time"]).total_seconds()
-        if duration < DURATION_THRESHOLD_SECONDS:
-            continue
+    valid_events = [
+        e for e in consolidated_events
+        if (e["end_time"] - e["start_time"]).total_seconds() >= DURATION_THRESHOLD_SECONDS
+    ]
 
+    print(f"\nPreparing to insert {len(valid_events)} valid events...\n")
+    time.sleep(0.5)
+
+    for event in tqdm(valid_events, desc="Inserting events", unit="evt"):
         centroid_wkt = get_event_centroid(session, event["start_time"], event["end_time"], event["users"])
         centroid_geom = WKTElement(centroid_wkt, srid=2277) if centroid_wkt else None
 
@@ -129,9 +168,8 @@ def insert_events(session, consolidated_events):
             location_geom=centroid_geom
         )
         session.add(orm_event)
-        session.flush()  # get event_id
+        session.flush()  # get generated event_id
 
-        # Add all user sessions
         for user_id in event["users"]:
             session.add(UserEventSessions(
                 id=user_id,
@@ -141,6 +179,7 @@ def insert_events(session, consolidated_events):
             ))
 
     session.commit()
+    print(f"\nSuccessfully inserted {len(valid_events)} events.\n")
 
 # --- Main runner ---
 def run_event_detection(time_window='7 days', downsample_interval=1, test_data=False):
@@ -164,7 +203,6 @@ def run_event_detection(time_window='7 days', downsample_interval=1, test_data=F
         insert_events(session, consolidated)
         elapsed = time.time() - start_time
         print(f"Event detection completed in {elapsed:.2f} seconds.")
-
 
 # --- Execute ---
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App.jsx";
+import App from "./Application.jsx";
 import "@tabler/core/dist/css/tabler.min.css"; // ✅ Tabler styles
 import "@tabler/core/dist/js/tabler.min.js";   // optional JS for interactivity
 

@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from backend.database_engine import engine, NametoUID, UserEventSessions, Events
-from sqlalchemy import func
+from backend.database_engine import engine, NametoUID, UserEventSessions, Events, RealtimeLocationData
+from sqlalchemy import func, text, distinct
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -61,9 +62,47 @@ def get_user_data(user_id: int, db: Session = Depends(get_db)):
         "recent_interactions": results
     }
 
+@router.get("/active-devices")
+def active_devices(db: Session = Depends(get_db)):
+    """Return number of unique devices that have sent data within the last hour."""
+    one_hour_ago = datetime.now() - timedelta(hours=1)
+
+    active_count = (
+        db.query(func.count(func.distinct(RealtimeLocationData.id)))
+        .filter(RealtimeLocationData.recorded_at >= one_hour_ago)
+        .scalar()
+    )
+
+    return {"active_devices": active_count or 0}
+
+
+@router.get("/events-today")
+def events_today(db: Session = Depends(get_db)):
+    """Return total number of events for the current day."""
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    event_count = (
+        db.query(func.count(Events.event_id))
+        .filter(Events.start_time >= today_start)
+        .scalar()
+    )
+
+    return {"events_today": event_count or 0}
+
+
+@router.get("/system-status")
+def system_status(db: Session = Depends(get_db)):
+    """Check database connection status."""
+    try:
+        db.execute(text("SELECT 1;"))
+        return {"status": "online"}
+    except Exception:
+        return {"status": "offline"}
+ 
 
 @router.get("/low-interaction")
 def get_low_interaction_users(threshold_minutes: int = Query(5), db: Session = Depends(get_db)):
+    
     """Return users with less than threshold minutes of interaction."""
     subq = (
         db.query(
@@ -74,6 +113,23 @@ def get_low_interaction_users(threshold_minutes: int = Query(5), db: Session = D
         .subquery()
     )
 
+    """ Join with Users to get names """
+    results = (
+        db.query(NametoUID.name, subq.c.id, subq.c.total_time)
+        .join(NametoUID, NametoUID.id == subq.c.id)
+        .filter(subq.c.total_time < threshold_minutes * 60)
+        .order_by(subq.c.total_time.asc())
+        .all()
+    )
+
+    return [
+        {
+            "user_id": r.id,
+            "name": r.name,
+            "total_minutes": round((r.total_time or 0) / 60, 2)
+        }
+        for r in results
+    ]
     low_users = db.query(subq.c.id, subq.c.total_time).filter(subq.c.total_time < threshold_minutes * 60).all()
 
     return [{"user_id": u.id, "total_minutes": round((u.total_time or 0) / 60, 2)} for u in low_users]

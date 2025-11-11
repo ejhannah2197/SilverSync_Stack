@@ -1,0 +1,2 @@
+## SilverSync ##
+SilverSync is a Bluetooth location finding system designed to monitor and log social interactions among care facility residents, providing caregivers with actionable insights to promote social engagement and well-being. Unlike existing solutions that rely on AI-driven virtual assistants, SilverSync focuses on direct human interactions to help caregivers identify residents at risk of social isolation and proactively support healthier, more connected communities

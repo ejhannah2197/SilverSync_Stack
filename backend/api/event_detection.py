@@ -1,38 +1,45 @@
-import time
 import pandas as pd
 import networkx as nx
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import text, func, and_, cast, Interval
+from sqlalchemy import func, and_, cast, text, Interval
 from geoalchemy2 import WKTElement
 from datetime import datetime, timedelta
-import random
-from tqdm import tqdm  # <-- NEW: for progress bar
-
-# Import your ORM models from database.py
+from fastapi import APIRouter, Depends, BackgroundTasks
 from backend.database_engine import RealtimeLocationData, Events, UserEventSessions, engine
+
+router = APIRouter()
+
+# Dependency to get DB session
+def get_db():
+    db = Session(bind=engine)
+    try:
+        yield db
+    finally:
+        db.close()
 
 # --- Configurable thresholds ---
 DISTANCE_THRESHOLD_FEET = 6.0
 DURATION_THRESHOLD_SECONDS = 60
 EVENT_GAP_SECONDS = 60
 
+"""
 # --- Optional: insert clustered test data ---
-def insert_test_data(num_users=10, num_timestamps=5):
-    """Insert clustered location data for testing purposes."""
+def insert_test_data(db, num_users=10, num_timestamps=5):
     with Session(engine) as session:
         for uid in range(1, num_users + 1):
             for t in range(num_timestamps):
                 x = 50 + random.random() * 5
                 y = 50 + random.random() * 5
                 point = WKTElement(f'POINT({x} {y})', srid=2277)
-                session.add(RealtimeLocationData(id=uid, geom=point, recorded_at=datetime.now() - timedelta(seconds=t)))
+                session.add(RealtimeLocationData(
+                    id=uid,
+                    geom=point,
+                    recorded_at=datetime.now() - timedelta(seconds=t)
+                ))
         session.commit()
-
+"""
 # --- Query proximity pairs using downsampled timestamps ---
 def get_proximity_data_bucketed(session, time_window='7 days', downsample_interval=1):
-    """
-    ORM-based query that downsamples timestamps and finds nearby users.
-    """
     bucket = int(downsample_interval)
     dist = float(DISTANCE_THRESHOLD_FEET)
 
@@ -81,8 +88,7 @@ def get_proximity_data_bucketed(session, time_window='7 days', downsample_interv
         .order_by(sub_a.c.recorded_at)
     )
 
-    df = pd.read_sql(query.statement, session.bind)
-    return df
+    return pd.read_sql(query.statement, session.bind)
 
 # --- Group users into connected events ---
 def group_connected_events(df):
@@ -136,29 +142,21 @@ def consolidate_events(events):
 
 # --- Compute event centroid using ORM ---
 def get_event_centroid(session, start_time, end_time, ids):
-    result = session.query(
-        func.ST_AsText(
-            func.ST_Centroid(
-                func.ST_Collect(RealtimeLocationData.geom)
-            )
-        )
+    return session.query(
+        func.ST_AsText(func.ST_Centroid(func.ST_Collect(RealtimeLocationData.geom)))
     ).filter(
         RealtimeLocationData.id.in_(ids),
         RealtimeLocationData.recorded_at.between(start_time, end_time)
     ).scalar()
-    return result
 
-# --- Insert events and sessions using ORM (with progress bar) ---
+# --- Insert events and sessions using ORM ---
 def insert_events(session, consolidated_events):
     valid_events = [
         e for e in consolidated_events
         if (e["end_time"] - e["start_time"]).total_seconds() >= DURATION_THRESHOLD_SECONDS
     ]
 
-    print(f"\nPreparing to insert {len(valid_events)} valid events...\n")
-    time.sleep(0.5)
-
-    for event in tqdm(valid_events, desc="Inserting events", unit="evt"):
+    for event in valid_events:
         centroid_wkt = get_event_centroid(session, event["start_time"], event["end_time"], event["users"])
         centroid_geom = WKTElement(centroid_wkt, srid=2277) if centroid_wkt else None
 
@@ -179,31 +177,24 @@ def insert_events(session, consolidated_events):
             ))
 
     session.commit()
-    print(f"\nSuccessfully inserted {len(valid_events)} events.\n")
 
 # --- Main runner ---
 def run_event_detection(time_window='7 days', downsample_interval=1, test_data=False):
-    if test_data:
-        insert_test_data(num_users=10, num_timestamps=5)
-
-    with Session(engine) as session:
-        start_time = time.time()
-        df = get_proximity_data_bucketed(session, time_window, downsample_interval)
+    with Session(engine) as db:
+        df = get_proximity_data_bucketed(db, time_window, downsample_interval)
         if df.empty:
-            print(f"No proximity data found in the past {time_window}.")
-            return
+            return "no_data"
 
         raw_events = group_connected_events(df)
         consolidated = consolidate_events(raw_events)
-
         if not consolidated:
-            print("No events to insert after consolidation.")
-            return
+            return "no_events"
 
-        insert_events(session, consolidated)
-        elapsed = time.time() - start_time
-        print(f"Event detection completed in {elapsed:.2f} seconds.")
+        insert_events(db, consolidated)
+        return "success"
 
-# --- Execute ---
-if __name__ == "__main__":
-    run_event_detection(test_data=True)
+# --- FastAPI route ---
+@router.post("/run-event-detection")
+async def run_event_detection_route(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_event_detection)
+    return {"message": "Event detection started!"}

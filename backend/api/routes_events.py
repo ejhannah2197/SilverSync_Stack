@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from backend.database_engine import engine, NametoUID, UserEventSessions, Events, RealtimeLocationData
 from sqlalchemy import func, text, distinct
 from datetime import datetime, timedelta
+from backend.api.event_detection import run_event_detection, Session
 
 router = APIRouter()
 

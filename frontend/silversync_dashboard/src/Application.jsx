@@ -10,6 +10,28 @@ export default function App() {
 
   const backendUrl = "http://127.0.0.1:8000/api/routes_events";
 
+// ---------------- LOW INTERACTION USERS ----------------
+const runEventDetection = async () => {
+  try {
+    const res = await fetch(`http://127.0.0.1:8000/api/event_detection/run-event-detection`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    const data = await res.json();
+
+    // Alert the user with the message from the backend
+    alert(data.message || "Event detection started!");
+  } catch (err) {
+    console.error("Error running event detection:", err);
+    alert("Failed to start event detection.");
+  }
+};
+
+
+
   // ---------------- LOW INTERACTION USERS ----------------
   useEffect(() => {
     const fetchLowUsers = async () => {
@@ -150,6 +172,23 @@ export default function App() {
           <a href="#" className="navbar-brand">
             <span className="navbar-brand-text">SilverSync Dashboard</span>
           </a>
+          <button onClick={runEventDetection}
+          className="btn btn p-0"
+          style={{
+            border: "none",
+            background: "transparent",
+            marginLeft: "260px",
+            cursor: "pointer",
+          }}>
+
+              
+                <img
+                src="/SilverSyncLogo.png"
+                alt="Run Event Detection"
+                style={{ width: "60px", height: "60px" }}
+                />
+                
+          </button>
 
           <ul className="navbar-nav ms-auto">
             <li className="nav-item" onClick={() => setActiveTab("overview")}>
@@ -167,6 +206,9 @@ export default function App() {
           {/* ---------------- OVERVIEW TAB ---------------- */}
           {activeTab === "overview" && (
             <>
+              <div className="row row-cards" style={{ position: "relative" }}>
+                {/* your cards here */}
+              </div>
               <div className="row row-cards">
                 {/* Active Devices */}
                 <div className="col-md-4">

@@ -69,7 +69,7 @@ def live_simulation(duration_seconds):
 
 def main():
     parser = argparse.ArgumentParser(description="Simulate real-time location data insertion.")
-    parser.add_argument('--duration', type=int, default=60, help='Simulation duration in seconds')
+    parser.add_argument('--duration', type=int, default=86400, help='Simulation duration in seconds')
     args = parser.parse_args()
 
     if args.duration <= 0:

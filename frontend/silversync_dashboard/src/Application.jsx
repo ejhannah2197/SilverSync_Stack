@@ -3,40 +3,53 @@ import "./App_style.css";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("overview");
+
+  // User Data Tab
   const [userName, setUserName] = useState("");
   const [userData, setUserData] = useState(null);
+
+  // Low Interaction
   const [lowUsers, setLowUsers] = useState([]);
   const [threshold, setThreshold] = useState(5);
 
+  // Reports
+  const [allUsers, setAllUsers] = useState([]);
+  const [reportUserId, setReportUserId] = useState(null);
+
+  // Overview Data
+  const [activeDevices, setActiveDevices] = useState(0);
+  const [eventsToday, setEventsToday] = useState(0);
+  const [systemStatus, setSystemStatus] = useState("offline");
+
   const backendUrl = "http://127.0.0.1:8000/api/routes_events";
 
-// ---------------- LOW INTERACTION USERS ----------------
-const runEventDetection = async () => {
-  try {
-    const res = await fetch(`http://127.0.0.1:8000/api/event_detection/run-event-detection`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
+  // --------------------------------------------------------------------
+  // Run Event Detection
+  // --------------------------------------------------------------------
+  const runEventDetection = async () => {
+    try {
+      const res = await fetch(
+        "http://127.0.0.1:8000/api/event_detection/run-event-detection",
+        { method: "POST", headers: { "Content-Type": "application/json" } }
+      );
 
-    const data = await res.json();
+      const data = await res.json();
+      alert(data.message || "Event detection started!");
+    } catch (err) {
+      console.error("Error running event detection:", err);
+      alert("Failed to start event detection.");
+    }
+  };
 
-    // Alert the user with the message from the backend
-    alert(data.message || "Event detection started!");
-  } catch (err) {
-    console.error("Error running event detection:", err);
-    alert("Failed to start event detection.");
-  }
-};
-
-
-
-  // ---------------- LOW INTERACTION USERS ----------------
+  // --------------------------------------------------------------------
+  // Load Low Interaction Users
+  // --------------------------------------------------------------------
   useEffect(() => {
     const fetchLowUsers = async () => {
       try {
-        const res = await fetch(`${backendUrl}/low-interaction?threshold_minutes=${threshold || 5}`);
+        const res = await fetch(
+          `${backendUrl}/low-interaction?threshold_minutes=${threshold}`
+        );
         const data = await res.json();
         setLowUsers(data);
       } catch (err) {
@@ -51,11 +64,16 @@ const runEventDetection = async () => {
     }
   }, [threshold, activeTab]);
 
-  // ---------------- USER DATA SEARCH ----------------
+  // --------------------------------------------------------------------
+  // User Search
+  // --------------------------------------------------------------------
   const fetchUserData = async () => {
     if (!userName) return;
+
     try {
-      const idRes = await fetch(`${backendUrl}/lookup_user_id?name=${encodeURIComponent(userName)}`);
+      const idRes = await fetch(
+        `${backendUrl}/lookup_user_id?name=${encodeURIComponent(userName)}`
+      );
       const idData = await idRes.json();
 
       if (!idData.user_id) {
@@ -66,7 +84,6 @@ const runEventDetection = async () => {
       const res = await fetch(`${backendUrl}/users?user_id=${idData.user_id}`);
       const data = await res.json();
 
-      console.log("Fetched user data:", data);
       setUserData(data);
     } catch (err) {
       console.error("Error fetching user data:", err);
@@ -74,146 +91,130 @@ const runEventDetection = async () => {
     }
   };
 
-  // ---------------- OVERVIEW CARDS DATA ----------------
-  const [activeDevices, setActiveDevices] = useState(0);
-  const [eventsToday, setEventsToday] = useState(0);
-  const [systemStatus, setSystemStatus] = useState("offline");
-
+  // --------------------------------------------------------------------
+  // Load All Users for Reports Tab
+  // --------------------------------------------------------------------
   useEffect(() => {
-  const fetchOverviewData = async () => {
-    try {
-      // Active Devices
-      const resDevices = await fetch(`${backendUrl}/active-devices`);
-      const dataDevices = await resDevices.json();
-      if (dataDevices.active_devices !== undefined) {
-        setActiveDevices(dataDevices.active_devices);
-      }
-
-      // Events Today
-      const resEvents = await fetch(`${backendUrl}/events-today`);
-      const dataEvents = await resEvents.json();
-      if (dataEvents.events_today !== undefined) {
-        setEventsToday(dataEvents.events_today);
-      }
-
-      // System Status
-      const resStatus = await fetch(`${backendUrl}/system-status`);
-      const dataStatus = await resStatus.json();
-      setSystemStatus(dataStatus.status === "online" ? "online" : "offline");
-    } catch (err) {
-      console.error("Error fetching overview data:", err);
-      setSystemStatus("offline");
-    }
-  };
-
-  fetchOverviewData(); // run once immediately
-  const interval = setInterval(fetchOverviewData, 10000); // every 10s
-
-  return () => clearInterval(interval);
-}, []);
-  /*
-  // Fetch active devices (last hour)
-  useEffect(() => {
-    const fetchActiveDevices = async () => {
+    const fetchUsers = async () => {
       try {
-        const res = await fetch(`${backendUrl}/active-devices`);
+        const res = await fetch("http://127.0.0.1:8000/api/routes_events/all-users");
         const data = await res.json();
-        if (data.active_devices !== undefined) setActiveDevices(data.active_devices);
+        setAllUsers(data);
       } catch (err) {
-        console.error("Error fetching active devices:", err);
+        console.error("Failed to load users:", err);
       }
     };
 
-    fetchActiveDevices();
-    const interval = setInterval(fetchActiveDevices, 60000);
-    return () => clearInterval(interval);
+    fetchUsers();
   }, []);
 
-  // Fetch events for today
+  // --------------------------------------------------------------------
+  // Overview Cards
+  // --------------------------------------------------------------------
   useEffect(() => {
-    const fetchEventsToday = async () => {
+    const fetchOverviewData = async () => {
       try {
-        const res = await fetch(`${backendUrl}/events-today`);
-        const data = await res.json();
-        if (data.events_today !== undefined) setEventsToday(data.events_today);
-      } catch (err) {
-        console.error("Error fetching events today:", err);
-      }
-    };
+        const resDevices = await fetch(`${backendUrl}/active-devices`);
+        const dataDevices = await resDevices.json();
+        setActiveDevices(dataDevices.active_devices ?? 0);
 
-    fetchEventsToday();
-    const interval = setInterval(fetchEventsToday, 60000);
-    return () => clearInterval(interval);
-  }, []);
+        const resEvents = await fetch(`${backendUrl}/events-today`);
+        const dataEvents = await resEvents.json();
+        setEventsToday(dataEvents.events_today ?? 0);
 
-  // Check database/system status
-  useEffect(() => {
-    const checkSystemStatus = async () => {
-      try {
-        const res = await fetch(`${backendUrl}/system-status`);
-        const data = await res.json();
-        setSystemStatus(data.status);
+        const resStatus = await fetch(`${backendUrl}/system-status`);
+        const dataStatus = await resStatus.json();
+        setSystemStatus(dataStatus.status === "online" ? "online" : "offline");
       } catch (err) {
+        console.error("Error fetching overview data:", err);
         setSystemStatus("offline");
       }
     };
 
-    checkSystemStatus();
-    const interval = setInterval(checkSystemStatus, 30000);
+    fetchOverviewData();
+    const interval = setInterval(fetchOverviewData, 10000);
     return () => clearInterval(interval);
   }, []);
-*/
 
-  // ---------------- RENDER ----------------
+  // --------------------------------------------------------------------
+  // Generate Report Button
+  // --------------------------------------------------------------------
+  const generateReport = () => {
+    if (!reportUserId) {
+      alert("Please select a user first.");
+      return;
+    }
+
+    window.open(`/report/${reportUserId}`, "_blank");
+  };
+
+  // --------------------------------------------------------------------
+  // RENDER UI
+  // --------------------------------------------------------------------
+
   return (
     <div className="page">
       <header className="navbar navbar-expand-md navbar-light bg-light">
         <div className="container-xl">
+
           <a href="#" className="navbar-brand">
             <span className="navbar-brand-text">SilverSync Dashboard</span>
           </a>
-          <button onClick={runEventDetection}
-          className="btn btn p-0"
-          style={{
-            border: "none",
-            background: "transparent",
-            marginLeft: "370px",
-            cursor: "pointer",
-          }}>
 
-              
-                <img
-                src="/SilverSyncLogo.png"
-                alt="Run Event Detection"
-                style={{ width: "60px", height: "60px" }}
-                />
-                
+          <button
+            onClick={runEventDetection}
+            className="btn btn p-0"
+            style={{
+              border: "none",
+              background: "transparent",
+              marginLeft: "370px",
+              cursor: "pointer",
+            }}
+          >
+            <img
+              src="/SilverSyncLogo.png"
+              alt="Run Event Detection"
+              style={{ width: "60px", height: "60px" }}
+            />
           </button>
 
+          {/* NAVIGATION TABS */}
           <ul className="navbar-nav ms-auto">
             <li className="nav-item" onClick={() => setActiveTab("overview")}>
-              <a className={`nav-link ${activeTab === "overview" ? "active" : ""}`}>Overview</a>
+              <a className={`nav-link ${activeTab === "overview" ? "active" : ""}`}>
+                Overview
+              </a>
             </li>
             <li className="nav-item" onClick={() => setActiveTab("user")}>
-              <a className={`nav-link ${activeTab === "user" ? "active" : ""}`}>User Data</a>
+              <a className={`nav-link ${activeTab === "user" ? "active" : ""}`}>
+                User Data
+              </a>
+            </li>
+            <li className="nav-item" onClick={() => setActiveTab("reports")}>
+              <a className={`nav-link ${activeTab === "reports" ? "active" : ""}`}>
+                Reports
+              </a>
             </li>
           </ul>
+
         </div>
       </header>
 
       <div className="page-wrapper">
         <div className="container-xl mt-4">
-          {/* ---------------- OVERVIEW TAB ---------------- */}
+
+          {/* ------------------------------------------------------------- */}
+          {/*                         OVERVIEW TAB                          */}
+          {/* ------------------------------------------------------------- */}
           {activeTab === "overview" && (
             <>
-              <div className="row row-cards" style={{ position: "relative" }}>
-                {/* your cards here */}
-              </div>
+              <div className="row row-cards" style={{ position: "relative" }}></div>
+
               <div className="row row-cards">
                 {/* Active Devices */}
                 <div className="col-md-4">
-                  <div className="card">
-                    <div className="card-body text-center">
+                  <div className="card text-center">
+                    <div className="card-body">
                       <h3 className="card-title">Active Devices</h3>
                       <p className="text-secondary">{activeDevices} Connected</p>
                     </div>
@@ -222,8 +223,8 @@ const runEventDetection = async () => {
 
                 {/* Events Today */}
                 <div className="col-md-4">
-                  <div className="card">
-                    <div className="card-body text-center">
+                  <div className="card text-center">
+                    <div className="card-body">
                       <h3 className="card-title">Events Today</h3>
                       <p className="text-secondary">{eventsToday} Detected</p>
                     </div>
@@ -232,8 +233,8 @@ const runEventDetection = async () => {
 
                 {/* System Status */}
                 <div className="col-md-4">
-                  <div className="card">
-                    <div className="card-body text-center">
+                  <div className="card text-center">
+                    <div className="card-body">
                       <h3 className="card-title">System Status</h3>
                       <span
                         className={`badge ${
@@ -247,21 +248,19 @@ const runEventDetection = async () => {
                 </div>
               </div>
 
-              {/* -------- LOW INTERACTION USERS TABLE -------- */}
+              {/* Low Interaction */}
               <div className="card mt-4">
                 <div className="card-body">
                   <h3>Low Interaction Users</h3>
+
                   <label>Time threshold (minutes):</label>
                   <input
                     type="number"
-                    placeholder="Enter threshold in minutes"
                     value={threshold}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setThreshold(val === "" ? 0 : parseInt(val));
-                    }}
+                    onChange={(e) => setThreshold(parseInt(e.target.value) || 0)}
                     className="form-control mb-3"
                   />
+
                   <table className="table">
                     <thead>
                       <tr>
@@ -272,22 +271,27 @@ const runEventDetection = async () => {
                     <tbody>
                       {lowUsers.map((u) => (
                         <tr key={u.user_id}>
-                          <td>{u.name || `User ${u.user_id}`}</td>
+                          <td>{u.name}</td>
                           <td>{u.total_minutes}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+
                 </div>
               </div>
             </>
           )}
 
-          {/* ---------------- USER DATA TAB ---------------- */}
+          {/* ------------------------------------------------------------- */}
+          {/*                        USER DATA TAB                           */}
+          {/* ------------------------------------------------------------- */}
           {activeTab === "user" && (
             <div className="card">
               <div className="card-body">
+
                 <h3>User Search</h3>
+
                 <input
                   type="text"
                   placeholder="Enter User Name"
@@ -295,15 +299,17 @@ const runEventDetection = async () => {
                   onChange={(e) => setUserName(e.target.value)}
                   className="form-control mb-2"
                 />
+
                 <button onClick={fetchUserData} className="btn btn-primary">
                   Get Data
                 </button>
 
                 {userData && (
                   <div className="mt-3">
-                    <h4>Total Interaction Time: {userData.total_interaction_minutes ?? 0} min</h4>
+                    <h4>Total Interaction Time: {userData.total_interaction_minutes} min</h4>
                     <h5>Recent Interactions:</h5>
-                    {userData.recent_interactions && userData.recent_interactions.length > 0 ? (
+
+                    {userData.recent_interactions?.length > 0 ? (
                       <ul>
                         {userData.recent_interactions.map((r, i) => {
                           const start = new Date(r.start_time);
@@ -315,6 +321,7 @@ const runEventDetection = async () => {
                             month: "long",
                             day: "2-digit",
                           });
+
                           const timeStr = end.toLocaleTimeString("en-US", {
                             hour: "2-digit",
                             minute: "2-digit",
@@ -322,7 +329,8 @@ const runEventDetection = async () => {
 
                           return (
                             <li key={i}>
-                              <b>{dateStr}</b> — {timeStr} — Duration: {durationMin} min — Location: ({r.x_event}, {r.y_event})
+                              <b>{dateStr}</b> — {timeStr} — Duration: {durationMin} min —
+                              Location: ({r.x_event}, {r.y_event})
                             </li>
                           );
                         })}
@@ -332,9 +340,53 @@ const runEventDetection = async () => {
                     )}
                   </div>
                 )}
+
               </div>
             </div>
           )}
+
+          {/* ------------------------------------------------------------- */}
+          {/*                           REPORTS TAB                          */}
+          {/* ------------------------------------------------------------- */}
+          {activeTab === "reports" && (
+            <div className="card">
+              <div className="card-body">
+
+                <h3>Generate Interaction Report</h3>
+
+                {/* Dropdown */}
+                <label>Select User:</label>
+                <select
+                  className="form-select mb-3"
+                  value={reportUserId || ""}
+                  onChange={(e) => setReportUserId(e.target.value)}
+                >
+                  <option value="">Select a user...</option>
+
+                  {allUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} (ID {u.id})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="btn btn-primary"
+                  disabled={!reportUserId}
+                  onClick={generateReport}
+                >
+                  Generate Interaction Report
+                </button>
+
+                <div className="mt-4">
+                  <h4>Report Output</h4>
+                  <p>Select a user and click “Generate Interaction Report”.</p>
+                </div>
+
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

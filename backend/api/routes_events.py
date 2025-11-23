@@ -157,3 +157,11 @@ def get_low_interaction_users(threshold_minutes: int = Query(5), db: Session = D
         }
         for r in results
     ]
+
+# -----------------------------
+# LIST OF ALL USERS
+# -----------------------------
+@router.get("/all-users")
+def get_all_users(db: Session = Depends(get_db)):
+    users = db.query(NametoUID).order_by(NametoUID.name.asc()).all()
+    return [{"id": u.id, "name": u.name} for u in users]

@@ -177,11 +177,7 @@ const runEventDetection = async () => {
           style={{
             border: "none",
             background: "transparent",
-<<<<<<< Updated upstream
-            marginLeft: "px",
-=======
             marginLeft: "370px",
->>>>>>> Stashed changes
             cursor: "pointer",
           }}>
 
@@ -326,8 +322,7 @@ const runEventDetection = async () => {
 
                           return (
                             <li key={i}>
-                              <b>{dateStr}</b> — {timeStr} — Duration: {durationMin} min — Location:{" "}
-                              {r.location}
+                              <b>{dateStr}</b> — {timeStr} — Duration: {durationMin} min — Location: ({r.x_event}, {r.y_event})
                             </li>
                           );
                         })}

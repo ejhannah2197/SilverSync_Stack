@@ -1,12 +1,11 @@
 from sqlalchemy import (
-    create_engine, Column, Integer, SmallInteger,
-    String, DateTime, Sequence, func
+    create_engine, Column, Integer, SmallInteger, DOUBLE_PRECISION,
+    String, DateTime, Sequence
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from geoalchemy2 import Geometry
 
-# Base class for ORM models
+# Base ORM model
 Base = declarative_base()
 
 # -------------------------
@@ -24,7 +23,8 @@ class RealtimeLocationData(Base):
     __tablename__ = "realtime_location_data"
 
     id = Column(SmallInteger, primary_key=True, nullable=False)
-    geom = Column(Geometry("POINT"), nullable=False)
+    x_coordinate = Column(DOUBLE_PRECISION, nullable=False)
+    y_coordinate = Column(DOUBLE_PRECISION, nullable=False)
     recorded_at = Column(DateTime(timezone=True), nullable=False)
 
 
@@ -54,16 +54,20 @@ class Events(Base):
     )
     start_time = Column(DateTime(timezone=False), nullable=False)
     end_time = Column(DateTime(timezone=False), nullable=False)
-    location_geom = Column(Geometry("POINT"))
+
+    # NEW: explicit numeric coordinates instead of geometry
+    x_event = Column(DOUBLE_PRECISION, nullable=False)
+    y_event = Column(DOUBLE_PRECISION, nullable=False)
 
 # -------------------------
 # DATABASE CONNECTION
 # -------------------------
 
-# adjust connection string for your setup
-engine = create_engine("postgresql+psycopg2://postgres:WAKE419!@100.123.22.7:5432/demoDB")
+engine = create_engine(
+    "postgresql+psycopg2://postgres:WAKE419!@100.123.22.7:5432/demoDB"
+)
 
-# Create tables if they don’t already exist
+# Create tables if they do not exist
 Base.metadata.create_all(engine)
 
 # Session factory

@@ -177,7 +177,7 @@ const runEventDetection = async () => {
           style={{
             border: "none",
             background: "transparent",
-            marginLeft: "260px",
+            marginLeft: "px",
             cursor: "pointer",
           }}>
 

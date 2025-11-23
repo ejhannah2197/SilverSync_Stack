@@ -1,4 +1,4 @@
-# RTL Live Data Generator (SQLAlchemy Version)
+# RTL Live Data Generator (SQLAlchemy Version with x/y coordinates)
 
 import random
 import time
@@ -10,20 +10,20 @@ from backend.database_engine import SessionLocal, RealtimeLocationData, NametoUI
 MAX_STEP = 1  # maximum movement per update
 
 def insert_location_data(session, data):
-    """Bulk insert location records using SQLAlchemy session."""
+    """Bulk insert x/y location records."""
     session.add_all(data)
     session.commit()
 
 def live_simulation(duration_seconds):
-    """Simulate real-time location updates for all users in NametoUID."""
+    """Simulate real-time x/y coordinate updates for all users in NametoUID."""
     session = SessionLocal()
 
     try:
-        # Get all user IDs from the database
+        # Get all user IDs
         user_ids = [user.id for user in session.query(NametoUID.id).all()]
         print(f"Found {len(user_ids)} users in NametoUID table.")
 
-        # Initialize random positions for each user
+        # Initialize random positions
         user_positions = {uid: [random.randint(0, 100), random.randint(0, 100)] for uid in user_ids}
 
         start_time = time.time()
@@ -46,20 +46,24 @@ def live_simulation(duration_seconds):
 
                 user_positions[uid] = [x, y]
 
-                # Create SQLAlchemy object
-                point_wkt = f'POINT({x} {y})'
+                # Create SQLAlchemy object using updated schema
                 data_batch.append(
-                    RealtimeLocationData(id=uid, geom=point_wkt, recorded_at=recorded_at)
+                    RealtimeLocationData(
+                        id=uid,
+                        x_coordinate=x,
+                        y_coordinate=y,
+                        recorded_at=recorded_at
+                    )
                 )
 
-            # Insert batch into DB
+            # Insert batch into database
             insert_location_data(session, data_batch)
             print(f"[{recorded_at.strftime('%H:%M:%S')}] Inserted {len(data_batch)} records.")
 
             time.sleep(1)
 
     except KeyboardInterrupt:
-        print("\nSimulation interrupted by user.")
+        print("\nSimulation interrupted.")
     except Exception as e:
         session.rollback()
         print("Error during simulation:", e)

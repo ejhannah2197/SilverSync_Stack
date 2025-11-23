@@ -2,14 +2,17 @@ import pandas as pd
 import networkx as nx
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, and_, cast, text, Interval
-from geoalchemy2 import WKTElement
-from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, BackgroundTasks
-from backend.database_engine import RealtimeLocationData, Events, UserEventSessions, engine
+from backend.database_engine import (
+    RealtimeLocationData,
+    Events,
+    UserEventSessions,
+    engine,
+)
 
 router = APIRouter()
 
-# Dependency to get DB session
+# Dependency for DB session
 def get_db():
     db = Session(bind=engine)
     try:
@@ -17,44 +20,32 @@ def get_db():
     finally:
         db.close()
 
-# --- Configurable thresholds ---
+
+# --- Thresholds ---
 DISTANCE_THRESHOLD_FEET = 6.0
 DURATION_THRESHOLD_SECONDS = 60
 EVENT_GAP_SECONDS = 60
 
-"""
-# --- Optional: insert clustered test data ---
-def insert_test_data(db, num_users=10, num_timestamps=5):
-    with Session(engine) as session:
-        for uid in range(1, num_users + 1):
-            for t in range(num_timestamps):
-                x = 50 + random.random() * 5
-                y = 50 + random.random() * 5
-                point = WKTElement(f'POINT({x} {y})', srid=2277)
-                session.add(RealtimeLocationData(
-                    id=uid,
-                    geom=point,
-                    recorded_at=datetime.now() - timedelta(seconds=t)
-                ))
-        session.commit()
-"""
-# --- Query proximity pairs using downsampled timestamps ---
+
+# --------------------------- PROXIMITY LOGIC (NO POSTGIS) ---------------------------
 def get_proximity_data_bucketed(session, time_window='7 days', downsample_interval=1):
+
     bucket = int(downsample_interval)
     dist = float(DISTANCE_THRESHOLD_FEET)
 
     a = aliased(RealtimeLocationData)
     b = aliased(RealtimeLocationData)
 
-    bucket_a = func.floor(func.extract('epoch', a.recorded_at) / bucket).label('bucket_group_a')
-    bucket_b = func.floor(func.extract('epoch', b.recorded_at) / bucket).label('bucket_group_b')
+    bucket_a = func.floor(func.extract('epoch', a.recorded_at) / bucket).label("bucket_group_a")
+    bucket_b = func.floor(func.extract('epoch', b.recorded_at) / bucket).label("bucket_group_b")
 
     sub_a = (
         session.query(
-            a.id.label('id'),
-            a.geom.label('geom'),
-            a.recorded_at.label('recorded_at'),
-            bucket_a
+            a.id.label("id"),
+            a.x_coordinate.label("x"),
+            a.y_coordinate.label("y"),
+            a.recorded_at.label("recorded_at"),
+            bucket_a,
         )
         .filter(a.recorded_at >= func.now() - cast(text(f"INTERVAL '{time_window}'"), Interval))
         .subquery()
@@ -62,27 +53,34 @@ def get_proximity_data_bucketed(session, time_window='7 days', downsample_interv
 
     sub_b = (
         session.query(
-            b.id.label('id'),
-            b.geom.label('geom'),
-            b.recorded_at.label('recorded_at'),
-            bucket_b
+            b.id.label("id"),
+            b.x_coordinate.label("x"),
+            b.y_coordinate.label("y"),
+            b.recorded_at.label("recorded_at"),
+            bucket_b,
         )
         .filter(b.recorded_at >= func.now() - cast(text(f"INTERVAL '{time_window}'"), Interval))
         .subquery()
     )
 
+    # Euclidean distance
+    distance_expr = func.sqrt(
+        func.pow(sub_a.c.x - sub_b.c.x, 2) +
+        func.pow(sub_a.c.y - sub_b.c.y, 2)
+    )
+
     query = (
         session.query(
-            sub_a.c.id.label('user_a'),
-            sub_b.c.id.label('user_b'),
-            sub_a.c.recorded_at.label('recorded_at')
+            sub_a.c.id.label("user_a"),
+            sub_b.c.id.label("user_b"),
+            sub_a.c.recorded_at.label("recorded_at"),
         )
         .join(
             sub_b,
             and_(
                 sub_a.c.bucket_group_a == sub_b.c.bucket_group_b,
                 sub_a.c.id < sub_b.c.id,
-                func.ST_DWithin(sub_a.c.geom, sub_b.c.geom, dist)
+                distance_expr <= dist,
             )
         )
         .order_by(sub_a.c.recorded_at)
@@ -90,110 +88,139 @@ def get_proximity_data_bucketed(session, time_window='7 days', downsample_interv
 
     return pd.read_sql(query.statement, session.bind)
 
-# --- Group users into connected events ---
+
+# --------------------------- EVENT GROUPING ---------------------------
 def group_connected_events(df):
-    grouped = df.groupby('recorded_at')
+    grouped = df.groupby("recorded_at")
     event_counter = 1
     events = []
 
-    for timestamp, group in grouped:
+    for ts, group in grouped:
         G = nx.Graph()
-        G.add_edges_from(zip(group['user_a'], group['user_b']))
+        G.add_edges_from(zip(group["user_a"], group["user_b"]))
+
         for component in nx.connected_components(G):
             if len(component) < 2:
                 continue
             events.append({
                 "event_id": event_counter,
-                "timestamp": timestamp,
+                "timestamp": ts,
                 "users": list(component)
             })
             event_counter += 1
+
     return events
 
-# --- Consolidate sequential events ---
+
+# --------------------------- EVENT CONSOLIDATION ---------------------------
 def consolidate_events(events):
     consolidated = []
-    active_events = {}
+    active = {}
 
     for e in events:
-        key = tuple(sorted(e['users']))
-        if key not in active_events:
-            active_events[key] = {
+        key = tuple(sorted(e["users"]))
+
+        if key not in active:
+            active[key] = {
                 "event_id": e["event_id"],
                 "start_time": e["timestamp"],
                 "end_time": e["timestamp"],
-                "users": e["users"]
+                "users": e["users"],
             }
         else:
-            last_time = active_events[key]["end_time"]
-            if (e["timestamp"] - last_time).total_seconds() <= EVENT_GAP_SECONDS:
-                active_events[key]["end_time"] = e["timestamp"]
+            last = active[key]["end_time"]
+            if (e["timestamp"] - last).total_seconds() <= EVENT_GAP_SECONDS:
+                active[key]["end_time"] = e["timestamp"]
             else:
-                consolidated.append(active_events.pop(key))
-                active_events[key] = {
+                consolidated.append(active.pop(key))
+                active[key] = {
                     "event_id": e["event_id"],
                     "start_time": e["timestamp"],
                     "end_time": e["timestamp"],
-                    "users": e["users"]
+                    "users": e["users"],
                 }
 
-    consolidated.extend(active_events.values())
+    consolidated.extend(active.values())
     return consolidated
 
-# --- Compute event centroid using ORM ---
-def get_event_centroid(session, start_time, end_time, ids):
-    return session.query(
-        func.ST_AsText(func.ST_Centroid(func.ST_Collect(RealtimeLocationData.geom)))
-    ).filter(
-        RealtimeLocationData.id.in_(ids),
-        RealtimeLocationData.recorded_at.between(start_time, end_time)
-    ).scalar()
 
-# --- Insert events and sessions using ORM ---
+# --------------------------- NEW CENTROID (X/Y AVERAGE) ---------------------------
+def get_numeric_centroid(session, start_time, end_time, user_ids):
+
+    result = session.query(
+        func.avg(RealtimeLocationData.x_coordinate),
+        func.avg(RealtimeLocationData.y_coordinate),
+    ).filter(
+        RealtimeLocationData.id.in_(user_ids),
+        RealtimeLocationData.recorded_at.between(start_time, end_time),
+    ).first()
+
+    if result and result[0] and result[1]:
+        return float(result[0]), float(result[1])
+    return None, None
+
+
+# --------------------------- INSERT EVENTS ---------------------------
 def insert_events(session, consolidated_events):
+
     valid_events = [
         e for e in consolidated_events
         if (e["end_time"] - e["start_time"]).total_seconds() >= DURATION_THRESHOLD_SECONDS
     ]
 
     for event in valid_events:
-        centroid_wkt = get_event_centroid(session, event["start_time"], event["end_time"], event["users"])
-        centroid_geom = WKTElement(centroid_wkt, srid=2277) if centroid_wkt else None
+
+        x_centroid, y_centroid = get_numeric_centroid(
+            session,
+            event["start_time"],
+            event["end_time"],
+            event["users"],
+        )
+
+        if x_centroid is None:
+            continue
 
         orm_event = Events(
             start_time=event["start_time"],
             end_time=event["end_time"],
-            location_geom=centroid_geom
+            x_event=x_centroid,
+            y_event=y_centroid,
         )
+
         session.add(orm_event)
-        session.flush()  # get generated event_id
+        session.flush()
 
         for user_id in event["users"]:
-            session.add(UserEventSessions(
-                id=user_id,
-                event_id=orm_event.event_id,
-                start_time=event["start_time"],
-                end_time=event["end_time"]
-            ))
+            session.add(
+                UserEventSessions(
+                    id=user_id,
+                    event_id=orm_event.event_id,
+                    start_time=event["start_time"],
+                    end_time=event["end_time"],
+                )
+            )
 
     session.commit()
 
-# --- Main runner ---
-def run_event_detection(time_window='7 days', downsample_interval=1, test_data=False):
+
+# --------------------------- MAIN ---------------------------
+def run_event_detection(time_window="7 days", downsample_interval=1):
     with Session(engine) as db:
         df = get_proximity_data_bucketed(db, time_window, downsample_interval)
         if df.empty:
             return "no_data"
 
-        raw_events = group_connected_events(df)
-        consolidated = consolidate_events(raw_events)
+        raw = group_connected_events(df)
+        consolidated = consolidate_events(raw)
+
         if not consolidated:
             return "no_events"
 
         insert_events(db, consolidated)
         return "success"
 
-# --- FastAPI route ---
+
+# --------------------------- API ROUTE ---------------------------
 @router.post("/run-event-detection")
 async def run_event_detection_route(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_event_detection)

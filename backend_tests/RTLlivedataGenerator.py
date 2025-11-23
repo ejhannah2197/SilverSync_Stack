@@ -7,7 +7,7 @@ import argparse
 from backend.database_engine import SessionLocal, RealtimeLocationData, NametoUID
 
 # Constants
-MAX_STEP = 1  # maximum movement per update
+MAX_STEP = 100  # maximum movement per update
 
 def insert_location_data(session, data):
     """Bulk insert x/y location records."""

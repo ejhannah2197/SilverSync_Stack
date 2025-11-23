@@ -50,8 +50,8 @@ def live_simulation(duration_seconds):
                 data_batch.append(
                     RealtimeLocationData(
                         id=uid,
-                        x_coordinate=x,
-                        y_coordinate=y,
+                        x_coordinate=int(x),
+                        y_coordinate=int(y),
                         recorded_at=recorded_at
                     )
                 )

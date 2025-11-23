@@ -183,8 +183,8 @@ def insert_events(session, consolidated_events):
         orm_event = Events(
             start_time=event["start_time"],
             end_time=event["end_time"],
-            x_event=x_centroid,
-            y_event=y_centroid,
+            x_event=int(x_centroid),
+            y_event=int(y_centroid),
         )
 
         session.add(orm_event)

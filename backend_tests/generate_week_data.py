@@ -165,8 +165,8 @@ def bulk_insert_location_points(rows, batch_size=BATCH_SIZE):
             dicts = [
                 {
                     "id": uid,
-                    "x_coordinate": x,
-                    "y_coordinate": y,
+                    "x_coordinate": int(x),
+                    "y_coordinate": int(y),
                     "recorded_at": ts
                 }
                 for uid, x, y, ts in chunk

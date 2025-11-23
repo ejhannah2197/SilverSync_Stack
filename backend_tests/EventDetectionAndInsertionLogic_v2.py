@@ -211,8 +211,8 @@ def insert_events(session, consolidated_events):
         orm_event = Events(
             start_time=ev["start_time"],
             end_time=ev["end_time"],
-            x_event=x_cent,
-            y_event=y_cent
+            x_event=int(x_cent),
+            y_event=int(y_cent)
         )
         session.add(orm_event)
         session.flush()

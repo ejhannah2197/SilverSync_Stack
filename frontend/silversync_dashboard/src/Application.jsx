@@ -177,7 +177,11 @@ const runEventDetection = async () => {
           style={{
             border: "none",
             background: "transparent",
+<<<<<<< Updated upstream
             marginLeft: "px",
+=======
+            marginLeft: "370px",
+>>>>>>> Stashed changes
             cursor: "pointer",
           }}>
 

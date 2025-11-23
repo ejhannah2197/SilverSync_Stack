@@ -10,7 +10,7 @@ call venv\Scripts\activate
 
 :: Step 2 - Start backend
 echo Starting SilverSync Backend...
-start "SilverSync Backend" cmd /k "cd backend && uvicorn main:app --reload"
+start "SilverSync Backend" cmd /k "uvicorn backend.main:app --reload"
 
 :: Wait a few seconds for backend to initialize
 timeout /t 5 >nul

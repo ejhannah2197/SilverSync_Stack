@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import MobilityMap from "../components/MobilityMap";
+
 
 export default function ReportPage() {
   const { userId } = useParams();
@@ -38,7 +40,11 @@ export default function ReportPage() {
       </ul>
 
       <h2>Mobility Map</h2>
-      <pre>{JSON.stringify(report.mobility.zones_visited, null, 2)}</pre>
+      <MobilityMap 
+        heatmap={report.mobility.heatmap}
+        movement_path={report.mobility.movement_path}
+        events={report.events}
+      />
 
       <h2>Top Friends</h2>
       <ul>

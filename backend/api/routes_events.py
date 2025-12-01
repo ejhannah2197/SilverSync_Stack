@@ -40,36 +40,48 @@ def lookup_user_id(name: str, db: Session = Depends(get_db)):
 @router.get("/users")
 def get_user_data(user_id: int, db: Session = Depends(get_db)):
 
-    # Total interaction time
-    total_time = (
-        db.query(func.sum(func.extract('epoch', UserEventSessions.end_time - UserEventSessions.start_time)))
+    # Total interaction time from new column
+    total_hours = (
+        db.query(func.coalesce(func.sum(UserEventSessions.duration_hours), 0.0))
         .filter(UserEventSessions.id == user_id)
         .scalar()
-    ) or 0
+    )
 
     # Last 3 interactions
     recent_interactions = (
-        db.query(UserEventSessions)
+        db.query(
+            UserEventSessions,
+            Events.x_event,
+            Events.y_event
+        )
+        .join(Events, Events.event_id == UserEventSessions.event_id, isouter=True)
         .filter(UserEventSessions.id == user_id)
         .order_by(UserEventSessions.end_time.desc())
         .limit(3)
         .all()
     )
 
+    # Format interactions
     results = []
-    for r in recent_interactions:
-        event = db.query(Events).filter(Events.event_id == r.event_id).first()
+    for row in recent_interactions:
+        session = row[0]
+        x_event = row[1]
+        y_event = row[2]
+
         results.append({
-            "event_id": r.event_id,
-            "start_time": str(r.start_time),
-            "end_time": str(r.end_time),
-            "x_event": event.x_event if event else None,
-            "y_event": event.y_event if event else None,
+            "event_id": session.event_id,
+            "start_time": str(session.start_time),
+            "end_time": str(session.end_time),
+            "duration_hours": session.duration_hours,
+            "duration_minutes": round(session.duration_hours * 60),
+            "x_event": x_event,
+            "y_event": y_event,
         })
 
     return {
         "user_id": user_id,
-        "total_interaction_minutes": round(total_time / 60, 2),
+        "total_hours": round(total_hours, 2),
+        "total_minutes": round(total_hours * 60, 2),
         "recent_interactions": results,
     }
 
@@ -123,29 +135,29 @@ def system_status(db: Session = Depends(get_db)):
 # LOW INTERACTION USERS
 # -----------------------------
 @router.get("/low-interaction")
-def get_low_interaction_users(threshold_minutes: int = Query(5), db: Session = Depends(get_db)):
+def get_low_interaction_users(threshold_hours: float = Query(0.01), db: Session = Depends(get_db)):
 
-    # Build total-time subquery
     subq = (
         db.query(
             UserEventSessions.id.label("user_id"),
-            func.sum(func.extract('epoch', UserEventSessions.end_time - UserEventSessions.start_time))
-                .label("total_time")
+            func.coalesce(func.sum(UserEventSessions.duration_hours), 0.0).label("total_hours"),
         )
         .group_by(UserEventSessions.id)
         .subquery()
     )
 
-    # Join with NametoUID to get names
+    # VERY IMPORTANT: force threshold_hours to float
+    threshold = float(threshold_hours)
+
     results = (
         db.query(
             NametoUID.name,
             subq.c.user_id,
-            subq.c.total_time
+            subq.c.total_hours,
         )
         .join(NametoUID, NametoUID.id == subq.c.user_id)
-        .filter(subq.c.total_time < threshold_minutes * 60)
-        .order_by(subq.c.total_time.asc())
+        .filter(subq.c.total_hours < threshold)        # <-- MUST be a comparison
+        .order_by(subq.c.total_hours.asc())
         .all()
     )
 
@@ -153,10 +165,12 @@ def get_low_interaction_users(threshold_minutes: int = Query(5), db: Session = D
         {
             "user_id": r.user_id,
             "name": r.name,
-            "total_minutes": round((r.total_time or 0) / 60, 2)
+            "total_hours": round(r.total_hours, 2),
         }
         for r in results
     ]
+
+
 
 # -----------------------------
 # LIST OF ALL USERS

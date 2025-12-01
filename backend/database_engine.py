@@ -1,6 +1,6 @@
 from sqlalchemy import (
     create_engine, Column, Integer, SmallInteger, DOUBLE_PRECISION,
-    String, DateTime, Sequence
+    String, DateTime, Sequence, Numeric
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -41,7 +41,7 @@ class UserEventSessions(Base):
     event_id = Column(Integer, nullable=False)
     start_time = Column(DateTime(timezone=False), nullable=False)
     end_time = Column(DateTime(timezone=False), nullable=False)
-
+    duration_hours = Column(Numeric, nullable=False)  # NEW: duration in hours
 
 class Events(Base):
     __tablename__ = "events"

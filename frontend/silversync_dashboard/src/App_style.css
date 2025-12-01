@@ -40,3 +40,9 @@
 .read-the-docs {
   color: #fe6;
 }
+
+@media print {
+  .live-map { display: none !important; }
+  .print-map-image { display: block !important; }
+}
+

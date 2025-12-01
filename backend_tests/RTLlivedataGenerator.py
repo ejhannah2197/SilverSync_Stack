@@ -7,7 +7,7 @@ import argparse
 from backend.database_engine import SessionLocal, RealtimeLocationData, NametoUID
 
 # Constants
-MAX_STEP = 100  # maximum movement per update
+MAX_STEP = 20  # maximum movement per update
 
 def insert_location_data(session, data):
     """Bulk insert x/y location records."""
@@ -41,8 +41,8 @@ def live_simulation(duration_seconds):
                 y += random.randint(-MAX_STEP, MAX_STEP)
 
                 # Clamp to 0..100
-                x = max(0, min(100, x))
-                y = max(0, min(100, y))
+                x = max(0, min(5000, x))
+                y = max(0, min(5000, y))
 
                 user_positions[uid] = [x, y]
 

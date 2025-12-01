@@ -62,17 +62,31 @@ def socialization_report(db, user_id):
 
 def event_report(db, user_id):
     sql = """
-        SELECT ue.event_id, e.start_time, e.end_time, COUNT(*) AS participants
+        SELECT 
+            e.event_id,
+            e.start_time,
+            e.end_time,
+            (
+                SELECT COUNT(DISTINCT id)
+                FROM user_event_sessions
+                WHERE event_id = e.event_id
+            ) AS participants
         FROM user_event_sessions ue
-        JOIN user_event_sessions u2 ON ue.event_id = u2.event_id
-        JOIN events e ON e.event_id = ue.event_id
+        JOIN events e ON ue.event_id = e.event_id
         WHERE ue.id = :uid
-        GROUP BY ue.event_id, e.start_time, e.end_time
-        HAVING COUNT(*) >= 4
         ORDER BY e.start_time DESC;
     """
-
+  
     rows = db.execute(text(sql), {"uid": user_id}).fetchall()
+
+    # Remove duplicates by event_id
+    events_map = {}
+    for r in rows:
+        events_map[r.event_id] = r
+
+    unique_rows = list(events_map.values())
+
+    # Format output just like before
     return [
         {
             "event_id": r.event_id,
@@ -80,7 +94,7 @@ def event_report(db, user_id):
             "end": str(r.end_time),
             "participants": r.participants
         }
-        for r in rows
+        for r in unique_rows
     ]
 
 def mobility_report(db, user_id):

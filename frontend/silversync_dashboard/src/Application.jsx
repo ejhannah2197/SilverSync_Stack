@@ -48,7 +48,7 @@ export default function App() {
     const fetchLowUsers = async () => {
       try {
         const res = await fetch(
-          `${backendUrl}/low-interaction?threshold_minutes=${threshold}`
+          `${backendUrl}/low-interaction?threshold_hours=${threshold}`
         );
         const data = await res.json();
         setLowUsers(data);
@@ -253,11 +253,11 @@ export default function App() {
                 <div className="card-body">
                   <h3>Low Interaction Users</h3>
 
-                  <label>Time threshold (minutes):</label>
+                  <label>Time threshold (hours):</label>
                   <input
                     type="number"
                     value={threshold}
-                    onChange={(e) => setThreshold(parseInt(e.target.value) || 0)}
+                    onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)}
                     className="form-control mb-3"
                   />
 
@@ -265,14 +265,14 @@ export default function App() {
                     <thead>
                       <tr>
                         <th>User Name</th>
-                        <th>Total Interaction (min)</th>
+                        <th>Total Interaction (hr)</th>
                       </tr>
                     </thead>
                     <tbody>
                       {lowUsers.map((u) => (
                         <tr key={u.user_id}>
                           <td>{u.name}</td>
-                          <td>{u.total_minutes}</td>
+                          <td>{u.total_hours}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -306,7 +306,11 @@ export default function App() {
 
                 {userData && (
                   <div className="mt-3">
-                    <h4>Total Interaction Time: {userData.total_interaction_minutes} min</h4>
+                    <h4>
+                      Total Interaction Time: {userData.total_hours} hr 
+                      ({userData.total_minutes} min)
+                    </h4>
+
                     <h5>Recent Interactions:</h5>
 
                     {userData.recent_interactions?.length > 0 ? (
@@ -314,7 +318,6 @@ export default function App() {
                         {userData.recent_interactions.map((r, i) => {
                           const start = new Date(r.start_time);
                           const end = new Date(r.end_time);
-                          const durationMin = Math.round((end - start) / 60000);
 
                           const dateStr = start.toLocaleDateString("en-US", {
                             year: "numeric",
@@ -329,7 +332,7 @@ export default function App() {
 
                           return (
                             <li key={i}>
-                              <b>{dateStr}</b> — {timeStr} — Duration: {durationMin} min —
+                              <b>{dateStr}</b> — {timeStr} — Duration: {r.duration_minutes} min — 
                               Location: ({r.x_event}, {r.y_event})
                             </li>
                           );

@@ -1,6 +1,6 @@
 from sqlalchemy import (
     create_engine, Column, Integer, SmallInteger, DOUBLE_PRECISION,
-    String, DateTime, Sequence, Numeric
+    String, DateTime, Sequence, Numeric, Computed
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -41,7 +41,7 @@ class UserEventSessions(Base):
     event_id = Column(Integer, nullable=False)
     start_time = Column(DateTime(timezone=False), nullable=False)
     end_time = Column(DateTime(timezone=False), nullable=False)
-    duration_hours = Column(Numeric, nullable=False)  # NEW: duration in hours
+    duration_hours = Column(Numeric, Computed("(extract(epoch from end_time - start_time) / 3600)", persisted=True))  # NEW: duration in hours
 
 class Events(Base):
     __tablename__ = "events"
@@ -64,7 +64,7 @@ class Events(Base):
 # -------------------------
 
 engine = create_engine(
-    "postgresql+psycopg2://postgres:WAKE419!@100.123.22.7:5432/demoDB"
+    "postgresql+psycopg2://postgres:WAKE419!@192.168.137.2:5432/demoDB"
 )
 
 # Create tables if they do not exist
